@@ -1,35 +1,56 @@
-const http = require('http');
 const WebSocket = require('ws');
-const yUtils = require('./node_modules/y-websocket/dist/y-websocket.cjs');
+const http = require('http');
 
-// In modern y-websocket, we handle the messages via the exported protocols
 const port = 1234;
-
 const server = http.createServer((req, res) => {
   res.writeHead(200);
-  res.end('Yjs Sync Server is Running');
+  res.end('Collaborative Server is Running');
 });
 
 const wss = new WebSocket.Server({ server });
 
-wss.on('connection', (conn, req) => {
-  console.log(`✨ New Peer joined: ${req.url}`);
+// This Map will store rooms: { "room-name": Set(connections) }
+const rooms = new Map();
 
-  // Broadcast every message to all other connected clients
-  // This is the core of how Yjs syncs without the 'setupWSConnection' utility
+wss.on('connection', (conn, req) => {
+  // Extract room name from URL (e.g., "/room-1" -> "room-1")
+  const roomName = req.url.slice(1) || 'default';
+  
+  console.log(`✨ User joined room: ${roomName}`);
+
+  // Add user to the specific room
+  if (!rooms.has(roomName)) {
+    rooms.set(roomName, new Set());
+  }
+  rooms.get(roomName).add(conn);
+
   conn.on('message', (message) => {
-    wss.clients.forEach((client) => {
-      if (client !== conn && client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
+    // Only broadcast to people in the SAME room
+    const clientsInRoom = rooms.get(roomName);
+    if (clientsInRoom) {
+      clientsInRoom.forEach((client) => {
+        if (client !== conn && client.readyState === WebSocket.OPEN) {
+          // Send the Yjs update only to roommates
+          client.send(message);
+        }
+      });
+    }
   });
 
-  conn.on('close', () => console.log('Peer left.'));
+  conn.on('close', () => {
+    const clientsInRoom = rooms.get(roomName);
+    if (clientsInRoom) {
+      clientsInRoom.delete(conn);
+      if (clientsInRoom.size === 0) {
+        rooms.delete(roomName); // Clean up empty rooms
+      }
+    }
+    console.log(`❌ User left room: ${roomName}`);
+  });
 });
 
 server.listen(port, () => {
-  console.log(`🚀 Yjs Server running at http://localhost:${port}`);
-  console.log(`👉 Your frontend should connect to: ws://localhost:${port}`);
+  console.log(`🚀 Server running at http://localhost:${port}`);
+  console.log(`✅ Manual Room Isolation is ACTIVE.`);
 });
 //node start-sync.cjs
