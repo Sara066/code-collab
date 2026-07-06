@@ -20,4 +20,3 @@ npm install
 npm run dev
 
 
-//mongodb+srv://CodeCollabUserOne:CodeCollab101@cluster0.uujyqsw.mongodb.net/?appName=Cluster0
